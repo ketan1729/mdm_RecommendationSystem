@@ -6,7 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 
-K = 5
+K = 4
 
 
 def get_train_and_test_data():
@@ -39,15 +39,16 @@ def predict_rating(user_id, movie_id):
 
     target_users = train_data[train_data['movieId'] == movie_id]['userId'].unique()
     target_users = [x - 1 for x in target_users]
-    target_users = sorted(target_users, key=lambda x: sim_mat[x][user_id])
+    target_users = sorted(target_users, key=lambda x: sim_mat[x][user_id - 1])
 
     if len(target_users) == 0:
         # NA-TU     Only the test user has watched the movie - Need to fix
         return 2.75
     for user in target_users[::-1]:
         if count < K:
-            sim_sum += sim_mat[user_id][user]
-            weighted_sum += sim_mat[user_id][user] * train_data[train_data['movieId'] == movie_id][train_data['userId'] == user + 1][
+            sim_sum += sim_mat[user_id - 1][user]
+            weighted_sum += sim_mat[user_id - 1][user] * \
+                            train_data[train_data['movieId'] == movie_id][train_data['userId'] == user + 1][
                                 'rating'].item()
             count += 1
     res = weighted_sum / sim_sum
@@ -61,9 +62,9 @@ def get_ratings():
     pred = []
     c = 1
     for index, row in test_data.iterrows():
-        print("For iter :", c)
-        c += 1
-        user_id = int(row['userId']) - 1
+        #print("For iter :", c)
+        #c += 1
+        user_id = int(row['userId'])
         movie_id = row['movieId']
         res = predict_rating(user_id, movie_id)
         pred.append(res)
@@ -96,8 +97,45 @@ def calculate_rmse():
     print("MAE: ", mae)
 
 
-def get_predicted_ratings_mat():
-    res_mat = []
+def get_predicted_ratings_dict(train_data, test_data):
+    res_dict = {}
+    movies_train = train_data['movieId'].unique().tolist()
+    movies_test = test_data['movieId'].unique().tolist()
+    movies = []
+    movies.extend(movies_train)
+    movies.extend(movies_test)
+    movies = set(movies)
+
+    users = train_data['userId'].unique()
+    for user in users:
+        curr_rec = []
+        movies_to_predict = [x for x in movies if x not in train_data[train_data['userId'] == user]['movieId'].unique()]
+        for movie in movies_to_predict:
+            pred_mov_rating = predict_rating(user, movie)
+            curr_rec.append((movie, pred_mov_rating))
+        res_dict[user] = sorted(curr_rec, key=lambda x: x[1])
+    return res_dict
+
+
+def get_recom_metrics(test_data, pred_ratings_dict):
+    precision = 0.0
+    recall = 0.0
+    for user in pred_ratings_dict:
+        user_precision = 0.0
+        user_recall = 0.0
+        pred_ratings = pred_ratings_dict[user]
+        for i in range(10):
+            if pred_ratings[i][0] in test_data[test_data['userId'] == user]['movieId'].unique():
+                user_precision += 1
+                recall += 1
+        precision += user_precision/10
+        recall += user_recall / len(test_data[test_data['userId'] == user]['movieId'].unique())
+
+    recall /= len(pred_ratings_dict)
+    precision /= len(pred_ratings_dict)
+
+    f_measure = 2 * precision * recall / (precision + recall)
+    return precision, recall, f_measure
 
 
 if __name__ == '__main__':
@@ -105,7 +143,12 @@ if __name__ == '__main__':
     x_train, y_train = create_utility_mat()
     sim_mat = get_similarity_matrix()
     y_pred = get_ratings()
-    compare()
+    #compare()
     calculate_rmse()
+    ratings_dict = get_predicted_ratings_dict(train_data, test_data)
+    precision, recall, f_measure = get_recom_metrics(test_data, ratings_dict)
+    print('Precision: ', precision)
+    print('Recall: ', recall)
+    print('F Measure: ', f_measure)
 
     # print(get_top_k_similar_users_rated(train_data, sim_mat, 5, 1, 4))
