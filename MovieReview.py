@@ -1,19 +1,21 @@
-import numpy as np
 import pandas as pd
 import math
 import csv
+from os import listdir
+from os.path import isfile, join
 from sklearn.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 
-K = 4
+K = 5
 
 
 def get_train_and_test_data():
     df = pd.read_csv(r"ratings.csv")
-    # df = pd.read_csv(r"ratings_2.csv")
     train, test = train_test_split(df, test_size=0.2, stratify=df['userId'])
+    train.to_csv('trainData.csv', encoding='utf-8', index=False)
+    test.to_csv('testData.csv', encoding='utf-8', index=False)
     return train, test
 
 
@@ -63,8 +65,6 @@ def get_ratings():
     pred = []
     c = 1
     for index, row in test_data.iterrows():
-        # print("For iter :", c)
-        # c += 1
         user_id = int(row['userId'])
         movie_id = row['movieId']
         res = predict_rating(user_id, movie_id)
@@ -98,7 +98,7 @@ def calculate_rmse():
     print("MAE: ", mae)
 
 
-def get_predicted_ratings_dict(train_data, test_data):
+def generate_predicted_ratings_files(train_data, test_data):
     movies_train = train_data['movieId'].unique().tolist()
     movies_test = test_data['movieId'].unique().tolist()
     movies = []
@@ -117,9 +117,11 @@ def get_predicted_ratings_dict(train_data, test_data):
             curr_bin = []
         curr_bin.append(user)
 
-    for user_bin_idx in range(len(user_bins)):
+    lo = 0
+    hi = len(user_bins)
+    for user_bin_idx in range(hi):
         user_bin = user_bins[user_bin_idx]
-        f_name = "PredictedRatings\\Bin" + str(61)+".csv"
+        f_name = "PredictedRatings\\Bin" + str(user_bin_idx+1)+".csv"
         outcsv = open(f_name, 'w', newline='')
         writer = csv.writer(outcsv)
         writer.writerow(["user", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"])
@@ -138,29 +140,35 @@ def get_predicted_ratings_dict(train_data, test_data):
         outcsv.close()
 
 
-def create_pred_ratings_dict():
-    res_dict = {}
-    
+def get_recom_metrics():
+    test_data_for_metrics = pd.read_csv("testData.csv")
+    dir_path = "PredictedRatings"
+    binfiles = [f for f in listdir(dir_path) if isfile(join(dir_path, f))]
 
-
-def get_recom_metrics(test_data, pred_ratings_dict):
     precision = 0.0
     recall = 0.0
-    for user in pred_ratings_dict:
-        user_precision = 0.0
-        user_recall = 0.0
-        pred_ratings = pred_ratings_dict[user]
-        for i in range(10):
-            if pred_ratings[i][0] in test_data[test_data['userId'] == user]['movieId'].unique():
-                user_precision += 1
-                recall += 1
-        precision += user_precision / 10
-        recall += user_recall / len(test_data[test_data['userId'] == user]['movieId'].unique())
+    no_of_users = 0
+    # df_pred_ratings = pd.DataFrame(columns=["user", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"])
+    cols = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"]
+    for f in binfiles:
+        curr_df = pd.read_csv("PredictedRatings//"+f)
+        curr_df = curr_df.reset_index()
+        for index, row in curr_df.iterrows():
+            no_of_users += 1
+            user_precision = 0.0
+            user_recall = 0.0
+            for c in cols:
+                if row[c] in test_data_for_metrics[test_data_for_metrics['userId'] == row['user']]['movieId'].unique():
+                    user_precision += 1
+                    user_recall += 1
+            precision += user_precision / 10
+            recall += user_recall / len(test_data_for_metrics[test_data_for_metrics['userId'] == row['user']]['movieId'].unique())
 
-    recall /= len(pred_ratings_dict)
-    precision /= len(pred_ratings_dict)
-
-    f_measure = 2 * precision * recall / (precision + recall)
+    recall /= no_of_users
+    precision /= no_of_users
+    f_measure = 0.0
+    if not (precision == 0.0 and recall == 0.0):
+        f_measure = 2 * precision * recall / (precision + recall)
     return precision, recall, f_measure
 
 
@@ -168,13 +176,13 @@ if __name__ == '__main__':
     train_data, test_data = get_train_and_test_data()
     x_train, y_train = create_utility_mat()
     sim_mat = get_similarity_matrix()
-    #y_pred = get_ratings()
+    # y_pred = get_ratings()
     # compare()
-    #calculate_rmse()
-    #get_predicted_ratings_dict(train_data, test_data)
-    #precision, recall, f_measure = get_recom_metrics(test_data, ratings_dict)
-    #print('Precision: ', precision)
-    #print('Recall: ', recall)
-    #print('F Measure: ', f_measure)
+    # calculate_rmse()
+    #generate_predicted_ratings_files(train_data, test_data)
+    o_precision, o_recall, o_f_measure = get_recom_metrics()
+    print('Precision: ', o_precision)
+    print('Recall: ', o_recall)
+    print('F Measure: ', o_f_measure)
 
     # print(get_top_k_similar_users_rated(train_data, sim_mat, 5, 1, 4))
